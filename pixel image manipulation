@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Simple Image Encryption Tool</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+  body {
+    font-family: 'Roboto', sans-serif;
+    background: #1e1e2f;
+    color: #e0e0e0;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+  }
+  h1 {
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: #00aaff;
+  }
+  p {
+    max-width: 700px;
+    text-align: center;
+    margin-bottom: 30px;
+    color: #aaa;
+    font-size: 1.1em;
+  }
+  #controls {
+    margin-bottom: 30px;
+  }
+  input[type="file"] {
+    background: #282c3a;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 15px;
+    color: #e0e0e0;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  button {
+    background: #007bff;
+    border: none;
+    padding: 12px 22px;
+    margin: 0 10px;
+    border-radius: 7px;
+    color: white;
+    font-weight: 700;
+    font-size: 1em;
+    cursor: pointer;
+    transition: background 0.3s ease;
+    user-select: none;
+  }
+  button:disabled {
+    background: #555969;
+    cursor: not-allowed;
+  }
+  button:hover:not(:disabled) {
+    background: #005fbb;
+  }
+  #canvas-container {
+    display: flex;
+    gap: 40px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .canvas-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 320px;
+  }
+  canvas {
+    border-radius: 12px;
+    box-shadow: 0 4px 14px rgba(0, 170, 255, 0.3);
+    max-width: 100%;
+    height: auto;
+  }
+  .label {
+    margin-top: 12px;
+    font-weight: 600;
+    color: #00aaff;
+  }
+  footer {
+    margin-top: auto;
+    font-size: 0.9em;
+    color: #444d66;
+  }
+</style>
+</head>
+<body>
+<h1>Simple Image Encryption Tool</h1>
+<p>Upload an image, then encrypt or decrypt it using pixel manipulation. The encryption applies a reversible operation to each pixel allowing you to restore the original image by decrypting.</p>
+
+<div id="controls">
+  <input type="file" id="fileInput" accept="image/*" />
+  <button id="encryptBtn" disabled>Encrypt Image</button>
+  <button id="decryptBtn" disabled>Decrypt Image</button>
+</div>
+
+<div id="canvas-container">
+  <div class="canvas-wrapper">
+    <canvas id="originalCanvas"></canvas>
+    <div class="label">Original Image</div>
+  </div>
+  <div class="canvas-wrapper">
+    <canvas id="processedCanvas"></canvas>
+    <div class="label">Processed Image</div>
+  </div>
+</div>
+
+<script>
+  const fileInput = document.getElementById('fileInput');
+  const encryptBtn = document.getElementById('encryptBtn');
+  const decryptBtn = document.getElementById('decryptBtn');
+  const originalCanvas = document.getElementById('originalCanvas');
+  const processedCanvas = document.getElementById('processedCanvas');
+  const originalCtx = originalCanvas.getContext('2d');
+  const processedCtx = processedCanvas.getContext('2d');
+
+  // We'll use a fixed key to XOR pixels for encryption/decryption
+  // XOR with fixed key is reversible by running the same again
+  const xorKey = 123; // simple integer key for XOR operation
+
+  // Store original image data to enable decryption baseline
+  let originalImageData = null;
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = function(event) {
+      img.onload = function() {
+        // Resize canvas to image size, max width 600 to keep UI neat
+        const maxWidth = 600;
+        let scale = 1;
+        if (img.width > maxWidth) {
+          scale = maxWidth / img.width;
+        }
+        originalCanvas.width = img.width * scale;
+        originalCanvas.height = img.height * scale;
+        processedCanvas.width = img.width * scale;
+        processedCanvas.height = img.height * scale;
+
+        originalCtx.clearRect(0, 0, originalCanvas.width, originalCanvas.height);
+        processedCtx.clearRect(0, 0, processedCanvas.width, processedCanvas.height);
+
+        originalCtx.drawImage(img, 0, 0, originalCanvas.width, originalCanvas.height);
+        // Save original image data
+        originalImageData = originalCtx.getImageData(0, 0, originalCanvas.width, originalCanvas.height);
+
+        encryptBtn.disabled = false;
+        decryptBtn.disabled = true;
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  function processImage(encrypt=true) {
+    if (!originalImageData) return;
+
+    // Create a new ImageData object to hold processed pixels
+    const imgData = processedCtx.createImageData(originalImageData);
+    const totalPixels = originalImageData.data.length;
+
+    for (let i = 0; i < totalPixels; i +=4) {
+      // Each pixel has RGBA in 4 consecutive indexes
+      // Apply XOR operation on R, G, B channels; leave alpha channel untouched
+      imgData.data[i]   = originalImageData.data[i]   ^ xorKey;
+      imgData.data[i+1] = originalImageData.data[i+1] ^ xorKey;
+      imgData.data[i+2] = originalImageData.data[i+2] ^ xorKey;
+      imgData.data[i+3] = originalImageData.data[i+3];
+    }
+
+    // Draw processed image on processedCanvas
+    processedCtx.putImageData(imgData, 0, 0);
+  }
+
+  encryptBtn.addEventListener('click', () => {
+    // Encrypt is just applying pixel XOR
+    processImage(true);
+    encryptBtn.disabled = true;
+    decryptBtn.disabled = false;
+  });
+
+  decryptBtn.addEventListener('click', () => {
+    // Decryption is same pixel XOR again to retrieve original
+    // We reuse originalImageData to restore the image then encrypt or decrypt
+    if (!originalImageData) return;
+
+    // Decrypt also by XORing originalImageData pixels with the key twice
+    // To mimic decrypting the encrypted image, let's get data from processedCanvas and XOR again
+
+    // Get image data from processedCanvas current image
+    const encryptedImageData = processedCtx.getImageData(0, 0, processedCanvas.width, processedCanvas.height);
+    const imgData = processedCtx.createImageData(encryptedImageData);
+    const totalPixels = encryptedImageData.data.length;
+
+    for (let i = 0; i < totalPixels; i += 4) {
+      imgData.data[i]   = encryptedImageData.data[i]   ^ xorKey;
+      imgData.data[i+1] = encryptedImageData.data[i+1] ^ xorKey;
+      imgData.data[i+2] = encryptedImageData.data[i+2] ^ xorKey;
+      imgData.data[i+3] = encryptedImageData.data[i+3];
+    }
+
+    // Put decrypted image in processedCanvas
+    processedCtx.putImageData(imgData, 0, 0);
+
+    encryptBtn.disabled = false;
+    decryptBtn.disabled = true;
+  });
+</script>
+<footer>© 2024 Simple Image Encryption Tool &nbsp;&nbsp;|&nbsp;&nbsp; Powered by pixel XOR</footer>
+</body>
+</html>
+
